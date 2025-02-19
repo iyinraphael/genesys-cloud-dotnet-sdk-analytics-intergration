@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.WebSockets;
 using System.Text;
+using PureCloudPlatform.Client.V2.Api;
 
 namespace GenesysSdkPoc
 {
@@ -15,7 +16,7 @@ namespace GenesysSdkPoc
             this.uriString = uriString;
          }
 
-         async public Task ConnectToWebsocket() 
+         async public Task ConnectToWebsocket(Action action) 
          {
 
             try 
@@ -44,8 +45,7 @@ namespace GenesysSdkPoc
 
                             if (result.MessageType == WebSocketMessageType.Text)
                             {
-                                string receivedMessage = Encoding.UTF8.GetString(buffer, 0, result.Count);
-                                Console.WriteLine($"Received message: {receivedMessage}");
+                                action.Invoke();
                             }
                             else if (result.MessageType == WebSocketMessageType.Close)
                             {

@@ -1,5 +1,5 @@
 ---
-title: Genesys Cloud .NET SDK - Query Conversation Data and Stream Ongoing Interactions on a Queue via Websocket
+title: Genesys Cloud .NET SDK - Query Conversation Data and Subcribe to Interactions Notication on a Queue via Websocket
 author: iyin.raphael
 indextype: blueprint
 icon: blueprint
@@ -82,6 +82,8 @@ var queueId = "";
 
 7. Make an ACD call to your Genesys Cloud org and see interaction details in terminal
 
+8. View output in console
+
 ## Implementation Steps
 
 ### 1. Install Platform API Client SDK - .NET
@@ -104,19 +106,22 @@ dotnet add package PureCloudPlatform.Client.V2 --version 226.0.0
     `using PureCloudPlatform.Client.V2.Extensions;`
 
 * Input your ClientId and Client Secret to authenticate. Also set your Org region, example: us_east_1
-![Authentication Code and Org region](images/authenticationCode.png)
 
-* Input QueueId 
-![Queue Id](images/queueId.png)
+```dotnet
+var accessTokenInfo = Configuration.Default.ApiClient.PostToken("", "");
 
-### 3. Query voice conversation metrics from Genesys Cloud Analytics API
+PureCloudRegionHosts region = PureCloudRegionHosts.us_east_1;
+Configuration.Default.ApiClient.setBasePath(region);
+```
+
+### Part One: Query voice conversation metrics using Genesys Cloud Analytics API
 * Create Analytics Conversation Object
-  - Defines a filter for mediaType = "voice"
-  - Sets a time interval
+  - Set "voice" predicate to filter mediaType
+  - Use time interval to select the time/date range 
   - Groups results by Queue ID and User ID
-  - Retrieves connected, transferred, and abandoned calls
+  - Retrieves connected, transferred, and abandoned calls metrics
 
-  ```dotnet
+```dotnet
   var predicate = new ConversationAggregateQueryPredicate
   {
       Dimension = ConversationAggregateQueryPredicate.DimensionEnum.Mediatype,
@@ -146,6 +151,7 @@ dotnet add package PureCloudPlatform.Client.V2 --version 226.0.0
       },
       Filter = filter
   };
+```
 
 * Query Analytics Conversation API
 
@@ -153,6 +159,100 @@ dotnet add package PureCloudPlatform.Client.V2 --version 226.0.0
 var analyticsApi = new AnalyticsApi();
 var conversationAnalyticsAggregate = new AnalyticsConversationsAggregates(analyticsApi);
 conversationAnalyticsAggregate.PostAnalyticsConversationsAggregates();
+```
+
+### Part Two: Subscribe to Interaction Notication from a queue via websocket
+* Create Queue Observation Query API Object
+  - filter with queue Id
+  - select metrics to observe 
+
+```dotnet
+private QueueObservationQuery CreateQueueObservationQuery()
+{
+    var predicate = new QueueObservationQueryPredicate
+    {
+        Dimension = QueueObservationQueryPredicate.DimensionEnum.Queueid,
+        Value = queueId
+    };
+    
+    var clause = new QueueObservationQueryClause
+    {
+        Type = QueueObservationQueryClause.TypeEnum.Or,
+        Predicates = [predicate]
+    };
+
+    var filter = new QueueObservationQueryFilter
+    {
+        Type = QueueObservationQueryFilter.TypeEnum.And,
+        Clauses = [clause]
+    };
+
+    return new QueueObservationQuery
+    {
+        Filter = filter,
+        DetailMetrics = [QueueObservationQuery.DetailMetricsEnum.Ointeracting],
+        Metrics = [QueueObservationQuery.MetricsEnum.Ointeracting
+        ,QueueObservationQuery.MetricsEnum.Owaiting, 
+        QueueObservationQuery.MetricsEnum.Ouserroutingstatuses]
+    };
+}
+```
+
+* Retrieve Queue metrics
+  - Use analytic api method to fetch queue metrics
+  - Serialize to JSON
+
+```dotnet
+  public void FetchAnalyticsQueuesObservationsMetrics()
+  {
+      try
+      { 
+          var body = CreateQueueObservationQuery();
+          QueueObservationQueryResponse result = analyticsApi.PostAnalyticsQueuesObservationsQuery(body);
+          Debug.WriteLine(result.ToJson());
+          Console.WriteLine(result);
+      }
+      catch (Exception e)
+      {
+          Debug.Print("Exception when calling AnalyticsApi.PostAnalyticsQueuesObservationsQuery: " + e.Message );
+      }
+  }
+```
+
+* Subscribe to notification channel
+  - Create Notification channel
+  - Get channel id from channel uri
+  - Subcribe to channel topic with the queue id
+
+```dotnet
+var notificationsApi = new NotificationsApi();
+var notificationChannel = new NotficationChannel(notificationsApi);
+var channelUri = notificationChannel.CreateNotficationChannel();
+
+var queueId = "";
+var channelId = channelUri.Split("/").Last();
+var channelTopic = new ChannelTopic 
+{
+  Id = $"v2.routing.queues.{queueId}.conversations"
+};
+var topics = new List<ChannelTopic>(){ channelTopic };
+
+try
+{
+    ChannelTopicEntityListing result = notificationsApi.PutNotificationsChannelSubscriptions(channelId, topics, true);
+}
+catch (Exception e)
+{
+    Debug.Print("Exception when calling NotificationsApi.PutNotificationsChannelSubscriptions: " + e.Message );
+}
+```
+
+* Connect websocket to listen to channel and fetch queue metrics 
+
+```dotnet
+var websocketClient = new WebSocketClient(channelUri);
+var queueObservationQuery = new AnalyticsQueryObservation(analyticsApi, queueId);
+await websocketClient.ConnectToWebsocket(queueObservationQuery.FetchAnalyticsQueuesObservationsMetrics);
 ```
 
 ## Additional Resources

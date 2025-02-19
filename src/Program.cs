@@ -50,12 +50,9 @@ internal class Program
             Debug.Print("Exception when calling NotificationsApi.PutNotificationsChannelSubscriptions: " + e.Message );
         }
 
-    
         // connect the web socket for live data streaming
         var websocketClient = new WebSocketClient(channelUri);
-        await websocketClient.ConnectToWebsocket();
-
         var queueObservationQuery = new AnalyticsQueryObservation(analyticsApi, queueId);
-        queueObservationQuery.CreateAnalyticsQueuesObservationsQuery();
+        await websocketClient.ConnectToWebsocket(queueObservationQuery.FetchAnalyticsQueuesObservationsMetrics);
     }
 }

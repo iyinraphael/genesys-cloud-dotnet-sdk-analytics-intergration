@@ -22,7 +22,6 @@ namespace GenesysSdkPoc
             try 
             {
                 Channel result = notificationsApi.PostNotificationsChannels();
-                Debug.WriteLine(result);
                 uri = result.ConnectUri;
             }
             catch (Exception e)

@@ -50,7 +50,7 @@ namespace GenesysSdkPoc
         }
 
 
-        public void CreateAnalyticsQueuesObservationsQuery()
+        public void FetchAnalyticsQueuesObservationsMetrics()
         {
             try
             { 
